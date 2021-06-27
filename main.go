@@ -31,10 +31,10 @@ var (
 		},
 		[]string{"host", "node"},
 	)
-	promHostTest = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
+	promHostTest = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
 			Namespace: "node_dns",
-			Name:      "test_result",
+			Name:      "test_count",
 		},
 		[]string{"host", "result", "status", "node"},
 	)
@@ -42,7 +42,7 @@ var (
 
 var addr = flag.String("listen-address", "127.0.0.1:8080", "The address to listen on for HTTP requests.")
 var test = flag.String("test-hosts", "nrk.no,vg.no,example.com", "Comma separated list of hosts to test DNS resolution")
-var requiredSearchdomains = flag.String("req-searchdomains","", "Comma separated list of required searchdomains")
+var requiredSearchdomains = flag.String("req-searchdomains", "", "Comma separated list of required searchdomains")
 var testInterval = flag.Int("test-interval-seconds", 10, "Interval in seconds for running test DNS resolution")
 var nodeName = flag.String("node-name", "localhost", "The name of the node running the container")
 
@@ -66,13 +66,13 @@ func main() {
 	}
 
 	searchdomains := resolvconf.GetSearchDomains(conf.Content)
-	
+
 	if *requiredSearchdomains != "" {
 		sort.Strings(searchdomains)
-		reqSearchdomains := strings.Split(strings.ReplaceAll(*requiredSearchdomains," ",""), ",")
-		for _, host := range reqSearchdomains{
-			i := sort.SearchStrings(searchdomains,host)
-			if !(i < len(searchdomains) && searchdomains[i] == host){
+		reqSearchdomains := strings.Split(strings.ReplaceAll(*requiredSearchdomains, " ", ""), ",")
+		for _, host := range reqSearchdomains {
+			i := sort.SearchStrings(searchdomains, host)
+			if !(i < len(searchdomains) && searchdomains[i] == host) {
 				promSearchdomain.With(prometheus.Labels{"host": host, "node": *nodeName}).Desc()
 			}
 		}
@@ -82,11 +82,11 @@ func main() {
 		promSearchdomain.With(prometheus.Labels{"host": host, "node": *nodeName}).Inc()
 	}
 
-	testhosts := strings.Split(strings.ReplaceAll(*test," ",""), ",")
+	testhosts := strings.Split(strings.ReplaceAll(*test, " ", ""), ",")
 	for _, host := range testhosts {
 		ticker := time.NewTicker(time.Duration(float64(*testInterval)) * time.Second)
 		quit := make(chan struct{})
-		go func(host string, metric *prometheus.GaugeVec) {
+		go func(host string, metric *prometheus.CounterVec) {
 			resultPrev := ""
 			resultPrevErr := ""
 			for {
@@ -97,19 +97,19 @@ func main() {
 					if err != nil {
 						resultErr := err.Error()
 						resultErrSlice := strings.Split(resultErr, ":")
-						resultErr = strings.TrimPrefix(resultErrSlice[len(resultErrSlice)-1]," ")
+						resultErr = strings.TrimPrefix(resultErrSlice[len(resultErrSlice)-1], " ")
 						fmt.Printf("Error: %s\n", err.Error())
-						
-						metric.With(prometheus.Labels{"host": host, "status": "failed", "result": resultErr, "node": *nodeName}).Set(1)
+
+						metric.With(prometheus.Labels{"host": host, "status": "failed", "result": resultErr, "node": *nodeName}).Inc()
 						if resultPrev != "" {
-							metric.With(prometheus.Labels{"host": host, "status": "success", "result": resultPrev, "node": *nodeName}).Set(0)
+							metric.With(prometheus.Labels{"host": host, "status": "success", "result": resultPrev, "node": *nodeName}).Inc()
 							resultPrev = ""
 						}
 						// Reset previous error result if it has changed
 						if resultPrevErr != "" && resultErr != resultPrevErr {
-							metric.With(prometheus.Labels{"host": host, "status": "failed", "result": resultPrevErr, "node": *nodeName}).Set(0)
+							metric.With(prometheus.Labels{"host": host, "status": "failed", "result": resultPrevErr, "node": *nodeName}).Inc()
 						}
-						
+
 						resultPrevErr = resultErr
 
 					} else {
@@ -117,14 +117,14 @@ func main() {
 						fmt.Printf("Resolved %s to %s\n", host, result)
 						resultString := strings.Join(result, ",")
 
-						metric.With(prometheus.Labels{"host": host, "status": "success", "result": resultString, "node": *nodeName}).Set(1)
+						metric.With(prometheus.Labels{"host": host, "status": "success", "result": resultString, "node": *nodeName}).Inc()
 						if resultPrevErr != "" {
-							metric.With(prometheus.Labels{"host": host, "status": "failed", "result": resultPrevErr, "node": *nodeName}).Set(0)
+							metric.With(prometheus.Labels{"host": host, "status": "failed", "result": resultPrevErr, "node": *nodeName}).Inc()
 							resultPrevErr = ""
 						}
 						// Reset previous success result if it has changed
 						if resultPrev != "" && resultString != resultPrev {
-							metric.With(prometheus.Labels{"host": host, "status": "success", "result": resultPrev, "node": *nodeName}).Set(0)
+							metric.With(prometheus.Labels{"host": host, "status": "success", "result": resultPrev, "node": *nodeName}).Inc()
 						}
 
 						resultPrev = resultString
